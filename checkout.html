@@ -32,129 +32,113 @@
     </div>
   </div>
 
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-app.js";
-    import {
-      getFirestore, doc, getDoc, updateDoc, setDoc,
-      serverTimestamp
-    } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore.js";
+ <script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-app.js";
+  import {
+    getFirestore, doc, getDoc, updateDoc, setDoc, serverTimestamp
+  } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore.js";
 
-    // ====== DÁN firebaseConfig CỦA BẠN ======
-    // Import the functions you need from the SDKs you need
-import { initializeApp } from "firebase/app";
-import { getAnalytics } from "firebase/analytics";
-// TODO: Add SDKs for Firebase products that you want to use
-// https://firebase.google.com/docs/web/setup#available-libraries
+  // ====== firebaseConfig (GIỮ NGUYÊN) ======
+  const firebaseConfig = {
+    apiKey: "AIzaSyAvKod7RAyvKE8w-w-NTUJlempsuxyRAsI",
+    authDomain: "thamthan584.firebaseapp.com",
+    projectId: "thamthan584",
+    storageBucket: "thamthan584.firebasestorage.app",
+    messagingSenderId: "1072621285684",
+    appId: "1:1072621285684:web:b5b64b288aecbbb85cb561"
+  };
 
-// Your web app's Firebase configuration
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
-const firebaseConfig = {
-  apiKey: "AIzaSyAvKod7RAyvKE8w-w-NTUJlempsuxyRAsI",
-  authDomain: "thamthan584.firebaseapp.com",
-  projectId: "thamthan584",
-  storageBucket: "thamthan584.firebasestorage.app",
-  messagingSenderId: "1072621285684",
-  appId: "1:1072621285684:web:b5b64b288aecbbb85cb561",
-  measurementId: "G-7E65GJ6955"
-};
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const analytics = getAnalytics(app);
-    const db = getFirestore(app);
+  function show(type, html) {
+    document.getElementById("msg").innerHTML = `<div class="${type}">${html}</div>`;
+  }
 
-    function show(type, html) {
-      document.getElementById("msg").innerHTML = `<div class="${type}">${html}</div>`;
-    }
+  function getCookie(name) {
+    const m = document.cookie.match(new RegExp("(^| )" + name + "=([^;]+)"));
+    return m ? decodeURIComponent(m[2]) : "";
+  }
+  function clearCookie(name) {
+    document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
+  }
 
-    function getCookie(name) {
-      const m = document.cookie.match(new RegExp("(^| )" + name + "=([^;]+)"));
-      return m ? decodeURIComponent(m[2]) : "";
-    }
-    function clearCookie(name) {
-      document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
-    }
+  async function sha256Hex(text) {
+    const enc = new TextEncoder().encode(text);
+    const hashBuf = await crypto.subtle.digest("SHA-256", enc);
+    const hashArr = Array.from(new Uint8Array(hashBuf));
+    return hashArr.map(b => b.toString(16).padStart(2, "0")).join("");
+  }
 
-    async function sha256Hex(text) {
-      const enc = new TextEncoder().encode(text);
-      const hashBuf = await crypto.subtle.digest("SHA-256", enc);
-      const hashArr = Array.from(new Uint8Array(hashBuf));
-      return hashArr.map(b => b.toString(16).padStart(2, "0")).join("");
-    }
+  async function doCheckout(visitId, method, cccdHashToClear = null) {
+    try {
+      show("muted", "Đang check-out...");
 
-    async function doCheckout(visitId, method, cccdHashToClear = null) {
-      try {
-        show("muted", "Đang check-out...");
+      await updateDoc(doc(db, "visits", visitId), {
+        status: "checked_out",
+        checkoutAt: serverTimestamp(),
+        checkoutMethod: method
+      });
 
-        await updateDoc(doc(db, "visits", visitId), {
-          status: "checked_out",
-          checkoutAt: serverTimestamp(),
-          checkoutMethod: method
-        });
-
-        // Clear mapping nếu có cccdHash
-        if (cccdHashToClear) {
-          await setDoc(doc(db, "activeByCccd", cccdHashToClear), {
-            visitId: "",
-            updatedAt: serverTimestamp()
-          }, { merge: true });
-        }
-
-        // Clear local dấu vết
-        localStorage.removeItem("visitId");
-        localStorage.removeItem("cccdHash");
-        clearCookie("visitId");
-        clearCookie("cccdHash");
-
-        show("ok", "<b>✅ Check-out thành công!</b><br>Trực ban/Chỉ huy sẽ thấy bạn đã về trên màn hình.");
-      } catch (e) {
-        show("err", `<b>❌ Không check-out được:</b> ${e.message}`);
-        document.getElementById("fallbackBox").style.display = "block";
-      }
-    }
-
-    // 1) Thử auto checkout bằng cookie/localStorage
-    async function tryAuto() {
-      const visitId = localStorage.getItem("visitId") || getCookie("visitId");
-      const cccdHash = localStorage.getItem("cccdHash") || getCookie("cccdHash");
-
-      if (visitId) {
-        await doCheckout(visitId, "qr_cookie", cccdHash || null);
-      } else {
-        document.getElementById("fallbackBox").style.display = "block";
-        show("muted", "Không tìm thấy cookie. Vui lòng nhập CCCD để check-out.");
-      }
-    }
-
-    // 2) Fallback: nhập CCCD -> lấy mapping -> checkout
-    document.getElementById("btnByCccd").addEventListener("click", async () => {
-      const cccdRaw = document.getElementById("cccd").value.trim().replace(/\s+/g, "");
-      if (!/^\d{12}$/.test(cccdRaw)) {
-        show("err", "CCCD phải đúng 12 chữ số.");
-        return;
+      if (cccdHashToClear) {
+        await setDoc(doc(db, "activeByCccd", cccdHashToClear), {
+          visitId: "",
+          updatedAt: serverTimestamp()
+        }, { merge: true });
       }
 
-      const cccdHash = await sha256Hex(cccdRaw);
+      localStorage.removeItem("visitId");
+      localStorage.removeItem("cccdHash");
+      clearCookie("visitId");
+      clearCookie("cccdHash");
 
-      const mapRef = doc(db, "activeByCccd", cccdHash);
-      const mapSnap = await getDoc(mapRef);
+      show("ok", "<b>✅ Check-out thành công!</b><br>Trực ban/Chỉ huy sẽ thấy bạn đã về trên màn hình.");
+    } catch (e) {
+      show("err", `<b>❌ Không check-out được:</b> ${e.message}`);
+      document.getElementById("fallbackBox").style.display = "block";
+    }
+  }
 
-      if (!mapSnap.exists()) {
-        show("err", "Không tìm thấy phiên thăm thân đang hoạt động theo CCCD này.");
-        return;
-      }
+  async function tryAuto() {
+    const visitId = localStorage.getItem("visitId") || getCookie("visitId");
+    const cccdHash = localStorage.getItem("cccdHash") || getCookie("cccdHash");
 
-      const { visitId } = mapSnap.data();
-      if (!visitId) {
-        show("err", "Không có phiên đang hoạt động (có thể đã check-out trước đó).");
-        return;
-      }
+    if (visitId) {
+      await doCheckout(visitId, "qr_cookie", cccdHash || null);
+    } else {
+      document.getElementById("fallbackBox").style.display = "block";
+      show("muted", "Không tìm thấy cookie. Vui lòng nhập CCCD để check-out.");
+    }
+  }
 
-      await doCheckout(visitId, "cccd", cccdHash);
-    });
+  document.getElementById("btnByCccd").addEventListener("click", async () => {
+    const cccdRaw = document.getElementById("cccd").value.trim().replace(/\s+/g, "");
+    if (!/^\d{12}$/.test(cccdRaw)) {
+      show("err", "CCCD phải đúng 12 chữ số.");
+      return;
+    }
 
-    tryAuto();
-  </script>
+    const cccdHash = await sha256Hex(cccdRaw);
+
+    const mapRef = doc(db, "activeByCccd", cccdHash);
+    const mapSnap = await getDoc(mapRef);
+
+    if (!mapSnap.exists()) {
+      show("err", "Không tìm thấy phiên thăm thân đang hoạt động theo CCCD này.");
+      return;
+    }
+
+    const { visitId } = mapSnap.data();
+    if (!visitId) {
+      show("err", "Không có phiên đang hoạt động (có thể đã check-out trước đó).");
+      return;
+    }
+
+    await doCheckout(visitId, "cccd", cccdHash);
+  });
+
+  tryAuto();
+</script>
 </body>
 </html>
 
