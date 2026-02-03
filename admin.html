@@ -91,273 +91,254 @@
     </div>
   </div>
 
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-app.js";
-    import {
-      getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut
-    } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-auth.js";
-    import {
-      getFirestore, collection, query, where, orderBy, limit,
-      onSnapshot, doc, updateDoc, serverTimestamp
-    } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore.js";
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-app.js";
+  import {
+    getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut
+  } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-auth.js";
+  import {
+    getFirestore, collection, query, where, orderBy, limit,
+    onSnapshot, doc, updateDoc, serverTimestamp
+  } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore.js";
 
-    // ====== DÁN firebaseConfig CỦA BẠN ======
- // Import the functions you need from the SDKs you need
-import { initializeApp } from "firebase/app";
-import { getAnalytics } from "firebase/analytics";
-// TODO: Add SDKs for Firebase products that you want to use
-// https://firebase.google.com/docs/web/setup#available-libraries
+  // ====== firebaseConfig (GIỮ NGUYÊN) ======
+  const firebaseConfig = {
+    apiKey: "AIzaSyAvKod7RAyvKE8w-w-NTUJlempsuxyRAsI",
+    authDomain: "thamthan584.firebaseapp.com",
+    projectId: "thamthan584",
+    storageBucket: "thamthan584.firebasestorage.app",
+    messagingSenderId: "1072621285684",
+    appId: "1:1072621285684:web:b5b64b288aecbbb85cb561"
+  };
 
-// Your web app's Firebase configuration
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
-const firebaseConfig = {
-  apiKey: "AIzaSyAvKod7RAyvKE8w-w-NTUJlempsuxyRAsI",
-  authDomain: "thamthan584.firebaseapp.com",
-  projectId: "thamthan584",
-  storageBucket: "thamthan584.firebasestorage.app",
-  messagingSenderId: "1072621285684",
-  appId: "1:1072621285684:web:b5b64b288aecbbb85cb561",
-  measurementId: "G-7E65GJ6955"
-};
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db = getFirestore(app);
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const analytics = getAnalytics(app);
+  // UI elements
+  const loginBox = document.getElementById("loginBox");
+  const appBox = document.getElementById("appBox");
+  const loginBtn = document.getElementById("loginBtn");
+  const logoutBtn = document.getElementById("logoutBtn");
+  const loginMsg = document.getElementById("loginMsg");
+  const userBox = document.getElementById("userBox");
+  const tbody = document.getElementById("tbody");
+  const stats = document.getElementById("stats");
+  const toast = document.getElementById("toast");
+  const soundToggle = document.getElementById("soundToggle");
+  const notifToggle = document.getElementById("notifToggle");
 
-    const auth = getAuth(app);
-    const db = getFirestore(app);
+  function showLoginMsg(text) {
+    loginMsg.style.display = "block";
+    loginMsg.innerHTML = text;
+  }
+  function hideLoginMsg() { loginMsg.style.display = "none"; }
 
-    // UI elements
-    const loginBox = document.getElementById("loginBox");
-    const appBox = document.getElementById("appBox");
-    const loginBtn = document.getElementById("loginBtn");
-    const logoutBtn = document.getElementById("logoutBtn");
-    const loginMsg = document.getElementById("loginMsg");
-    const userBox = document.getElementById("userBox");
-    const tbody = document.getElementById("tbody");
-    const stats = document.getElementById("stats");
-    const toast = document.getElementById("toast");
-    const soundToggle = document.getElementById("soundToggle");
-    const notifToggle = document.getElementById("notifToggle");
+  function showToast(text) {
+    toast.style.display = "block";
+    toast.innerHTML = text;
+    setTimeout(() => toast.style.display = "none", 6000);
+  }
 
-    function showLoginMsg(text) {
-      loginMsg.style.display = "block";
-      loginMsg.innerHTML = text;
+  async function beep() {
+    if (!soundToggle.checked) return;
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.connect(g); g.connect(ctx.destination);
+      o.frequency.value = 880;
+      g.gain.value = 0.08;
+      o.start();
+      o.stop(ctx.currentTime + 0.18);
+      o.onended = () => ctx.close();
+    } catch {}
+  }
+
+  async function ensureNotifPermission() {
+    if (!notifToggle.checked) return false;
+    if (!("Notification" in window)) return false;
+    if (Notification.permission === "granted") return true;
+    const p = await Notification.requestPermission();
+    return p === "granted";
+  }
+
+  // Login/Logout
+  loginBtn.addEventListener("click", async () => {
+    hideLoginMsg();
+    const email = document.getElementById("email").value.trim();
+    const password = document.getElementById("password").value;
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+    } catch (e) {
+      showLoginMsg(`<b>Đăng nhập lỗi:</b> ${e.message}`);
     }
-    function hideLoginMsg() { loginMsg.style.display = "none"; }
+  });
 
-    function showToast(text) {
-      toast.style.display = "block";
-      toast.innerHTML = text;
-      setTimeout(() => toast.style.display = "none", 6000);
-    }
+  logoutBtn.addEventListener("click", async () => {
+    await signOut(auth);
+  });
 
-    // Beep bằng WebAudio (không cần file âm thanh)
-    let audioUnlocked = false;
-    async function beep() {
-      if (!soundToggle.checked) return;
-      try {
-        const ctx = new (window.AudioContext || window.webkitAudioContext)();
-        const o = ctx.createOscillator();
-        const g = ctx.createGain();
-        o.connect(g); g.connect(ctx.destination);
-        o.frequency.value = 880;
-        g.gain.value = 0.08;
-        o.start();
-        o.stop(ctx.currentTime + 0.18);
-        o.onended = () => ctx.close();
-      } catch {}
-    }
+  // Realtime listener
+  let unsub = null;
+  let knownIds = new Set();
 
-    async function ensureNotifPermission() {
-      if (!notifToggle.checked) return false;
-      if (!("Notification" in window)) return false;
-      if (Notification.permission === "granted") return true;
-      const p = await Notification.requestPermission();
-      return p === "granted";
-    }
+  function formatTime(ts) {
+    if (!ts) return "-";
+    const d = ts.toDate ? ts.toDate() : ts;
+    return d.toLocaleString("vi-VN");
+  }
 
-    // Login/Logout
-    loginBtn.addEventListener("click", async () => {
-      hideLoginMsg();
-      const email = document.getElementById("email").value.trim();
-      const password = document.getElementById("password").value;
-      try {
-        await signInWithEmailAndPassword(auth, email, password);
-        audioUnlocked = true;
-      } catch (e) {
-        showLoginMsg(`<b>Đăng nhập lỗi:</b> ${e.message}`);
-      }
-    });
+  function statusPill(s) {
+    if (s === "pending") return `<span class="pill pending">CHỜ DUYỆT</span>`;
+    if (s === "approved") return `<span class="pill approved">ĐÃ DUYỆT</span>`;
+    if (s === "rejected") return `<span class="pill rejected">TỪ CHỐI</span>`;
+    if (s === "checked_out") return `<span class="pill out">ĐÃ VỀ</span>`;
+    return s;
+  }
 
-    logoutBtn.addEventListener("click", async () => {
-      await signOut(auth);
-    });
+  function renderRows(rows) {
+    tbody.innerHTML = rows.map(r => {
+      const cccdMasked = `****${r.cccdLast4 || ""}`;
+      const actions = (r.status === "pending") ? `
+        <button class="good" data-act="approve" data-id="${r.id}">DUYỆT</button>
+        <button class="bad" data-act="reject" data-id="${r.id}">TỪ CHỐI</button>
+      ` : (r.status === "approved") ? `
+        <button class="gray" data-act="manualCheckout" data-id="${r.id}">CHECK-OUT THỦ CÔNG</button>
+      ` : `
+        <span class="muted">-</span>
+      `;
 
-    // Realtime listener
-    let unsub = null;
-    let knownIds = new Set();
+      return `
+        <tr>
+          <td>${formatTime(r.createdAt)}</td>
+          <td>
+            <b>${r.fullName}</b><br>
+            <span class="muted">${r.phone}</span>
+          </td>
+          <td>${r.soldierName}</td>
+          <td>${r.relationship}</td>
+          <td>${cccdMasked}</td>
+          <td>${statusPill(r.status)}</td>
+          <td class="row-actions">${actions}</td>
+        </tr>
+      `;
+    }).join("");
 
-    function formatTime(ts) {
-      if (!ts) return "-";
-      const d = ts.toDate ? ts.toDate() : ts;
-      return d.toLocaleString("vi-VN");
-    }
+    tbody.querySelectorAll("button[data-act]").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const id = btn.getAttribute("data-id");
+        const act = btn.getAttribute("data-act");
+        const ref = doc(db, "visits", id);
 
-    function statusPill(s) {
-      if (s === "pending") return `<span class="pill pending">CHỜ DUYỆT</span>`;
-      if (s === "approved") return `<span class="pill approved">ĐÃ DUYỆT</span>`;
-      if (s === "rejected") return `<span class="pill rejected">TỪ CHỐI</span>`;
-      if (s === "checked_out") return `<span class="pill out">ĐÃ VỀ</span>`;
-      return s;
-    }
-
-    function renderRows(rows) {
-      tbody.innerHTML = rows.map(r => {
-        const cccdMasked = `****${r.cccdLast4 || ""}`;
-        const actions = (r.status === "pending") ? `
-          <button class="good" data-act="approve" data-id="${r.id}">DUYỆT</button>
-          <button class="bad" data-act="reject" data-id="${r.id}">TỪ CHỐI</button>
-        ` : (r.status === "approved") ? `
-          <button class="gray" data-act="manualCheckout" data-id="${r.id}">CHECK-OUT THỦ CÔNG</button>
-        ` : `
-          <span class="muted">-</span>
-        `;
-
-        return `
-          <tr>
-            <td>${formatTime(r.createdAt)}</td>
-            <td>
-              <b>${r.fullName}</b><br>
-              <span class="muted">${r.phone}</span>
-            </td>
-            <td>${r.soldierName}</td>
-            <td>${r.relationship}</td>
-            <td>${cccdMasked}</td>
-            <td>${statusPill(r.status)}</td>
-            <td class="row-actions">${actions}</td>
-          </tr>
-        `;
-      }).join("");
-
-      // Attach actions
-      tbody.querySelectorAll("button[data-act]").forEach(btn => {
-        btn.addEventListener("click", async () => {
-          const id = btn.getAttribute("data-id");
-          const act = btn.getAttribute("data-act");
-          const ref = doc(db, "visits", id);
-
-          try {
-            if (act === "approve") {
-              await updateDoc(ref, {
-                status: "approved",
-                approvedAt: serverTimestamp(),
-                approvedBy: auth.currentUser.uid
-              });
-              showToast("✅ Đã duyệt cho vào.");
-            }
-            if (act === "reject") {
-              await updateDoc(ref, {
-                status: "rejected",
-                approvedAt: serverTimestamp(),
-                approvedBy: auth.currentUser.uid
-              });
-              showToast("⛔ Đã từ chối.");
-            }
-            if (act === "manualCheckout") {
-              await updateDoc(ref, {
-                status: "checked_out",
-                checkoutAt: serverTimestamp(),
-                checkoutMethod: "manual"
-              });
-              showToast("🏁 Đã check-out thủ công.");
-            }
-          } catch (e) {
-            showToast(`❌ Lỗi thao tác: ${e.message}`);
+        try {
+          if (act === "approve") {
+            await updateDoc(ref, {
+              status: "approved",
+              approvedAt: serverTimestamp(),
+              approvedBy: auth.currentUser.uid
+            });
+            showToast("✅ Đã duyệt cho vào.");
           }
-        });
+          if (act === "reject") {
+            await updateDoc(ref, {
+              status: "rejected",
+              approvedAt: serverTimestamp(),
+              approvedBy: auth.currentUser.uid
+            });
+            showToast("⛔ Đã từ chối.");
+          }
+          if (act === "manualCheckout") {
+            await updateDoc(ref, {
+              status: "checked_out",
+              checkoutAt: serverTimestamp(),
+              checkoutMethod: "manual"
+            });
+            showToast("🏁 Đã check-out thủ công.");
+          }
+        } catch (e) {
+          showToast(`❌ Lỗi thao tác: ${e.message}`);
+        }
       });
+    });
+  }
+
+  onAuthStateChanged(auth, async (user) => {
+    if (!user) {
+      userBox.textContent = "";
+      appBox.style.display = "none";
+      logoutBtn.style.display = "none";
+      loginBtn.style.display = "inline-block";
+      if (unsub) { unsub(); unsub = null; }
+      knownIds = new Set();
+      return;
     }
 
-    onAuthStateChanged(auth, async (user) => {
-      if (!user) {
-        userBox.textContent = "";
-        appBox.style.display = "none";
-        logoutBtn.style.display = "none";
-        loginBtn.style.display = "inline-block";
-        if (unsub) { unsub(); unsub = null; }
-        knownIds = new Set();
-        return;
-      }
+    userBox.innerHTML = `Đăng nhập: <b>${user.email}</b>`;
+    logoutBtn.style.display = "inline-block";
+    loginBtn.style.display = "none";
+    appBox.style.display = "block";
+    showToast("Đã đăng nhập. Đang bật realtime...");
 
-      userBox.innerHTML = `Đăng nhập: <b>${user.email}</b>`;
-      logoutBtn.style.display = "inline-block";
-      loginBtn.style.display = "none";
-      appBox.style.display = "block";
-      showToast("Đã đăng nhập. Đang bật realtime...");
+    notifToggle.addEventListener("change", ensureNotifPermission);
+    await ensureNotifPermission();
 
-      // Xin quyền thông báo nếu bật
-      notifToggle.addEventListener("change", ensureNotifPermission);
-      await ensureNotifPermission();
+    const start = new Date();
+    start.setHours(0,0,0,0);
 
-      // Query: lấy đăng ký từ đầu ngày (theo giờ máy)
-      const start = new Date();
-      start.setHours(0,0,0,0);
+    const q = query(
+      collection(db, "visits"),
+      where("createdAt", ">=", start),
+      orderBy("createdAt", "desc"),
+      limit(200)
+    );
 
-      const q = query(
-        collection(db, "visits"),
-        where("createdAt", ">=", start),
-        orderBy("createdAt", "desc"),
-        limit(200)
-      );
+    unsub = onSnapshot(q, async (snap) => {
+      const rows = [];
+      let countPending = 0, countApproved = 0, countOut = 0, countRejected = 0;
 
-      unsub = onSnapshot(q, async (snap) => {
-        const rows = [];
-        let countPending = 0, countApproved = 0, countOut = 0, countRejected = 0;
-
-        // Detect new docs
-        for (const ch of snap.docChanges()) {
-          if (ch.type === "added") {
-            const d = ch.doc.data();
-            if (!knownIds.has(ch.doc.id)) {
-              knownIds.add(ch.doc.id);
-              if (d.status === "pending") {
-                await beep();
-                if (notifToggle.checked && "Notification" in window && Notification.permission === "granted") {
-                  new Notification("Có đăng ký thăm thân mới", {
-                    body: `${d.fullName || "Một người"} – thăm ${d.soldierName || ""}`
-                  });
-                }
-                showToast(`📣 Mới: ${d.fullName} đăng ký thăm ${d.soldierName}`);
+      for (const ch of snap.docChanges()) {
+        if (ch.type === "added") {
+          const d = ch.doc.data();
+          if (!knownIds.has(ch.doc.id)) {
+            knownIds.add(ch.doc.id);
+            if (d.status === "pending") {
+              await beep();
+              if (notifToggle.checked && "Notification" in window && Notification.permission === "granted") {
+                new Notification("Có đăng ký thăm thân mới", {
+                  body: `${d.fullName || "Một người"} – thăm ${d.soldierName || ""}`
+                });
               }
+              showToast(`📣 Mới: ${d.fullName} đăng ký thăm ${d.soldierName}`);
             }
           }
         }
+      }
 
-        snap.forEach(docSnap => {
-          const d = docSnap.data();
-          const item = { id: docSnap.id, ...d };
-          rows.push(item);
+      snap.forEach(docSnap => {
+        const d = docSnap.data();
+        const item = { id: docSnap.id, ...d };
+        rows.push(item);
 
-          if (d.status === "pending") countPending++;
-          else if (d.status === "approved") countApproved++;
-          else if (d.status === "checked_out") countOut++;
-          else if (d.status === "rejected") countRejected++;
-        });
-
-        stats.innerHTML = `
-          <b>Tổng hôm nay:</b> ${rows.length} —
-          <span class="pill pending">Chờ duyệt: ${countPending}</span>
-          <span class="pill approved">Đã duyệt: ${countApproved}</span>
-          <span class="pill out">Đã về: ${countOut}</span>
-          <span class="pill rejected">Từ chối: ${countRejected}</span>
-        `;
-        renderRows(rows);
-      }, (err) => {
-        showToast(`❌ Không đọc được dữ liệu (Rules/Quyền?): ${err.message}`);
+        if (d.status === "pending") countPending++;
+        else if (d.status === "approved") countApproved++;
+        else if (d.status === "checked_out") countOut++;
+        else if (d.status === "rejected") countRejected++;
       });
+
+      stats.innerHTML = `
+        <b>Tổng hôm nay:</b> ${rows.length} —
+        <span class="pill pending">Chờ duyệt: ${countPending}</span>
+        <span class="pill approved">Đã duyệt: ${countApproved}</span>
+        <span class="pill out">Đã về: ${countOut}</span>
+        <span class="pill rejected">Từ chối: ${countRejected}</span>
+      `;
+      renderRows(rows);
+    }, (err) => {
+      showToast(`❌ Không đọc được dữ liệu (Rules/Quyền?): ${err.message}`);
     });
-  </script>
+  });
+</script>
 </body>
 </html>
 
