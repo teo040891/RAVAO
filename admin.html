@@ -1,1 +1,351 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Bảng trực – Thăm thân</title>
+  <style>
+    body { font-family: system-ui, Arial; margin:0; background:#0b1220; color:#eaf0ff; }
+    .wrap { max-width: 1100px; margin: 0 auto; padding: 16px; }
+    .card { background:#111b31; border:1px solid rgba(255,255,255,.08); border-radius: 14px; padding: 16px; }
+    h1 { margin:0 0 8px; font-size: 18px; }
+    .muted { color: rgba(234,240,255,.75); font-size: 13px; }
+    input, button { padding: 10px; border-radius: 10px; border: 1px solid rgba(255,255,255,.12); background:#0b1220; color:#eaf0ff; }
+    input { width: 100%; box-sizing: border-box; }
+    button { cursor:pointer; font-weight:700; }
+    button.primary { background:#1b74e4; border:0; }
+    button.good { background:#0aa35c; border:0; }
+    button.bad { background:#c0362c; border:0; }
+    button.gray { background:#33415f; border:0; }
+    .grid { display:grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    @media (max-width: 800px) { .grid { grid-template-columns: 1fr; } }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th, td { border-bottom:1px solid rgba(255,255,255,.08); padding: 10px; vertical-align: top; font-size: 14px; }
+    th { text-align:left; color: rgba(234,240,255,.85); }
+    .pill { display:inline-block; padding: 4px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; }
+    .pending { background:#ffd86b; color:#2a1b00; }
+    .approved { background:#68ffb3; color:#003018; }
+    .rejected { background:#ff8f8f; color:#3b0000; }
+    .out { background:#9bb1ff; color:#0b1220; }
+    .row-actions button { margin-right: 6px; margin-top: 6px; }
+    .topbar { display:flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .toast { margin-top: 10px; padding: 10px; border-radius: 10px; border:1px solid rgba(255,255,255,.12); background:#0b1220; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <div class="topbar">
+        <div>
+          <h1>Bảng trực – Đăng ký thăm thân (TÊN ĐƠN VỊ)</h1>
+          <div class="muted">Trang này cập nhật thời gian thực. Trực ban bấm duyệt để cho vào. Chỉ huy mở trang này để theo dõi.</div>
+        </div>
+        <div id="userBox" class="muted"></div>
+      </div>
+
+      <div id="loginBox" style="margin-top:12px;">
+        <div class="grid">
+          <div>
+            <label class="muted">Email</label>
+            <input id="email" placeholder="email trực ban/chỉ huy" />
+          </div>
+          <div>
+            <label class="muted">Mật khẩu</label>
+            <input id="password" type="password" placeholder="********" />
+          </div>
+        </div>
+        <div style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap;">
+          <button class="primary" id="loginBtn">ĐĂNG NHẬP</button>
+          <button class="gray" id="logoutBtn" style="display:none;">ĐĂNG XUẤT</button>
+          <label class="muted" style="display:flex; align-items:center; gap:8px;">
+            <input type="checkbox" id="soundToggle" checked />
+            Âm báo khi có đăng ký mới
+          </label>
+          <label class="muted" style="display:flex; align-items:center; gap:8px;">
+            <input type="checkbox" id="notifToggle" />
+            Thông báo trình duyệt
+          </label>
+        </div>
+        <div id="loginMsg" class="toast" style="display:none;"></div>
+      </div>
+
+      <div id="appBox" style="display:none; margin-top:12px;">
+        <div id="stats" class="toast"></div>
+        <div id="toast" class="toast" style="display:none;"></div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Thời gian</th>
+              <th>Người thăm</th>
+              <th>Quân nhân</th>
+              <th>Quan hệ</th>
+              <th>CCCD</th>
+              <th>Trạng thái</th>
+              <th>Thao tác</th>
+            </tr>
+          </thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-app.js";
+    import {
+      getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut
+    } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-auth.js";
+    import {
+      getFirestore, collection, query, where, orderBy, limit,
+      onSnapshot, doc, updateDoc, serverTimestamp
+    } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore.js";
+
+    // ====== DÁN firebaseConfig CỦA BẠN ======
+    const firebaseConfig = {
+      apiKey: "PASTE_HERE",
+      authDomain: "PASTE_HERE",
+      projectId: "PASTE_HERE",
+      storageBucket: "PASTE_HERE",
+      messagingSenderId: "PASTE_HERE",
+      appId: "PASTE_HERE"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    // UI elements
+    const loginBox = document.getElementById("loginBox");
+    const appBox = document.getElementById("appBox");
+    const loginBtn = document.getElementById("loginBtn");
+    const logoutBtn = document.getElementById("logoutBtn");
+    const loginMsg = document.getElementById("loginMsg");
+    const userBox = document.getElementById("userBox");
+    const tbody = document.getElementById("tbody");
+    const stats = document.getElementById("stats");
+    const toast = document.getElementById("toast");
+    const soundToggle = document.getElementById("soundToggle");
+    const notifToggle = document.getElementById("notifToggle");
+
+    function showLoginMsg(text) {
+      loginMsg.style.display = "block";
+      loginMsg.innerHTML = text;
+    }
+    function hideLoginMsg() { loginMsg.style.display = "none"; }
+
+    function showToast(text) {
+      toast.style.display = "block";
+      toast.innerHTML = text;
+      setTimeout(() => toast.style.display = "none", 6000);
+    }
+
+    // Beep bằng WebAudio (không cần file âm thanh)
+    let audioUnlocked = false;
+    async function beep() {
+      if (!soundToggle.checked) return;
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const o = ctx.createOscillator();
+        const g = ctx.createGain();
+        o.connect(g); g.connect(ctx.destination);
+        o.frequency.value = 880;
+        g.gain.value = 0.08;
+        o.start();
+        o.stop(ctx.currentTime + 0.18);
+        o.onended = () => ctx.close();
+      } catch {}
+    }
+
+    async function ensureNotifPermission() {
+      if (!notifToggle.checked) return false;
+      if (!("Notification" in window)) return false;
+      if (Notification.permission === "granted") return true;
+      const p = await Notification.requestPermission();
+      return p === "granted";
+    }
+
+    // Login/Logout
+    loginBtn.addEventListener("click", async () => {
+      hideLoginMsg();
+      const email = document.getElementById("email").value.trim();
+      const password = document.getElementById("password").value;
+      try {
+        await signInWithEmailAndPassword(auth, email, password);
+        audioUnlocked = true;
+      } catch (e) {
+        showLoginMsg(`<b>Đăng nhập lỗi:</b> ${e.message}`);
+      }
+    });
+
+    logoutBtn.addEventListener("click", async () => {
+      await signOut(auth);
+    });
+
+    // Realtime listener
+    let unsub = null;
+    let knownIds = new Set();
+
+    function formatTime(ts) {
+      if (!ts) return "-";
+      const d = ts.toDate ? ts.toDate() : ts;
+      return d.toLocaleString("vi-VN");
+    }
+
+    function statusPill(s) {
+      if (s === "pending") return `<span class="pill pending">CHỜ DUYỆT</span>`;
+      if (s === "approved") return `<span class="pill approved">ĐÃ DUYỆT</span>`;
+      if (s === "rejected") return `<span class="pill rejected">TỪ CHỐI</span>`;
+      if (s === "checked_out") return `<span class="pill out">ĐÃ VỀ</span>`;
+      return s;
+    }
+
+    function renderRows(rows) {
+      tbody.innerHTML = rows.map(r => {
+        const cccdMasked = `****${r.cccdLast4 || ""}`;
+        const actions = (r.status === "pending") ? `
+          <button class="good" data-act="approve" data-id="${r.id}">DUYỆT</button>
+          <button class="bad" data-act="reject" data-id="${r.id}">TỪ CHỐI</button>
+        ` : (r.status === "approved") ? `
+          <button class="gray" data-act="manualCheckout" data-id="${r.id}">CHECK-OUT THỦ CÔNG</button>
+        ` : `
+          <span class="muted">-</span>
+        `;
+
+        return `
+          <tr>
+            <td>${formatTime(r.createdAt)}</td>
+            <td>
+              <b>${r.fullName}</b><br>
+              <span class="muted">${r.phone}</span>
+            </td>
+            <td>${r.soldierName}</td>
+            <td>${r.relationship}</td>
+            <td>${cccdMasked}</td>
+            <td>${statusPill(r.status)}</td>
+            <td class="row-actions">${actions}</td>
+          </tr>
+        `;
+      }).join("");
+
+      // Attach actions
+      tbody.querySelectorAll("button[data-act]").forEach(btn => {
+        btn.addEventListener("click", async () => {
+          const id = btn.getAttribute("data-id");
+          const act = btn.getAttribute("data-act");
+          const ref = doc(db, "visits", id);
+
+          try {
+            if (act === "approve") {
+              await updateDoc(ref, {
+                status: "approved",
+                approvedAt: serverTimestamp(),
+                approvedBy: auth.currentUser.uid
+              });
+              showToast("✅ Đã duyệt cho vào.");
+            }
+            if (act === "reject") {
+              await updateDoc(ref, {
+                status: "rejected",
+                approvedAt: serverTimestamp(),
+                approvedBy: auth.currentUser.uid
+              });
+              showToast("⛔ Đã từ chối.");
+            }
+            if (act === "manualCheckout") {
+              await updateDoc(ref, {
+                status: "checked_out",
+                checkoutAt: serverTimestamp(),
+                checkoutMethod: "manual"
+              });
+              showToast("🏁 Đã check-out thủ công.");
+            }
+          } catch (e) {
+            showToast(`❌ Lỗi thao tác: ${e.message}`);
+          }
+        });
+      });
+    }
+
+    onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        userBox.textContent = "";
+        appBox.style.display = "none";
+        logoutBtn.style.display = "none";
+        loginBtn.style.display = "inline-block";
+        if (unsub) { unsub(); unsub = null; }
+        knownIds = new Set();
+        return;
+      }
+
+      userBox.innerHTML = `Đăng nhập: <b>${user.email}</b>`;
+      logoutBtn.style.display = "inline-block";
+      loginBtn.style.display = "none";
+      appBox.style.display = "block";
+      showToast("Đã đăng nhập. Đang bật realtime...");
+
+      // Xin quyền thông báo nếu bật
+      notifToggle.addEventListener("change", ensureNotifPermission);
+      await ensureNotifPermission();
+
+      // Query: lấy đăng ký từ đầu ngày (theo giờ máy)
+      const start = new Date();
+      start.setHours(0,0,0,0);
+
+      const q = query(
+        collection(db, "visits"),
+        where("createdAt", ">=", start),
+        orderBy("createdAt", "desc"),
+        limit(200)
+      );
+
+      unsub = onSnapshot(q, async (snap) => {
+        const rows = [];
+        let countPending = 0, countApproved = 0, countOut = 0, countRejected = 0;
+
+        // Detect new docs
+        for (const ch of snap.docChanges()) {
+          if (ch.type === "added") {
+            const d = ch.doc.data();
+            if (!knownIds.has(ch.doc.id)) {
+              knownIds.add(ch.doc.id);
+              if (d.status === "pending") {
+                await beep();
+                if (notifToggle.checked && "Notification" in window && Notification.permission === "granted") {
+                  new Notification("Có đăng ký thăm thân mới", {
+                    body: `${d.fullName || "Một người"} – thăm ${d.soldierName || ""}`
+                  });
+                }
+                showToast(`📣 Mới: ${d.fullName} đăng ký thăm ${d.soldierName}`);
+              }
+            }
+          }
+        }
+
+        snap.forEach(docSnap => {
+          const d = docSnap.data();
+          const item = { id: docSnap.id, ...d };
+          rows.push(item);
+
+          if (d.status === "pending") countPending++;
+          else if (d.status === "approved") countApproved++;
+          else if (d.status === "checked_out") countOut++;
+          else if (d.status === "rejected") countRejected++;
+        });
+
+        stats.innerHTML = `
+          <b>Tổng hôm nay:</b> ${rows.length} —
+          <span class="pill pending">Chờ duyệt: ${countPending}</span>
+          <span class="pill approved">Đã duyệt: ${countApproved}</span>
+          <span class="pill out">Đã về: ${countOut}</span>
+          <span class="pill rejected">Từ chối: ${countRejected}</span>
+        `;
+        renderRows(rows);
+      }, (err) => {
+        showToast(`❌ Không đọc được dữ liệu (Rules/Quyền?): ${err.message}`);
+      });
+    });
+  </script>
+</body>
+</html>
 
