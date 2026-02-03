@@ -1,1 +1,149 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Check-out thăm thân</title>
+  <style>
+    body { font-family: system-ui, Arial; margin:0; background:#f6f7f9; }
+    .wrap { max-width: 720px; margin: 0 auto; padding: 16px; }
+    .card { background: white; border-radius: 12px; padding: 16px; box-shadow: 0 1px 8px rgba(0,0,0,.06); }
+    h1 { margin:0 0 8px; font-size: 20px; }
+    .muted { color:#666; font-size: 13px; }
+    input, button { width:100%; padding:12px; margin-top:8px; border-radius:10px; border:1px solid #d7dbe0; font-size:16px; box-sizing:border-box; }
+    button { border:0; background:#1b74e4; color:white; font-weight:800; cursor:pointer; }
+    .ok { background:#e8fff0; border:1px solid #b8f0cc; padding:10px; border-radius:10px; margin-top:10px; }
+    .err { background:#ffecec; border:1px solid #ffbdbd; padding:10px; border-radius:10px; margin-top:10px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>Check-out – TÊN ĐƠN VỊ</h1>
+      <p class="muted">Nếu thiết bị còn lưu cookie, bạn chỉ cần quét QR là xong. Nếu đã xóa cookie/site data, hãy nhập CCCD để check-out.</p>
+
+      <div id="msg"></div>
+
+      <div id="fallbackBox" style="display:none;">
+        <label class="muted">Nhập CCCD (12 số)</label>
+        <input id="cccd" inputmode="numeric" placeholder="Nhập 12 số CCCD" />
+        <button id="btnByCccd">CHECK-OUT BẰNG CCCD</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-app.js";
+    import {
+      getFirestore, doc, getDoc, updateDoc, setDoc,
+      serverTimestamp
+    } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore.js";
+
+    // ====== DÁN firebaseConfig CỦA BẠN ======
+    const firebaseConfig = {
+      apiKey: "PASTE_HERE",
+      authDomain: "PASTE_HERE",
+      projectId: "PASTE_HERE",
+      storageBucket: "PASTE_HERE",
+      messagingSenderId: "PASTE_HERE",
+      appId: "PASTE_HERE"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    function show(type, html) {
+      document.getElementById("msg").innerHTML = `<div class="${type}">${html}</div>`;
+    }
+
+    function getCookie(name) {
+      const m = document.cookie.match(new RegExp("(^| )" + name + "=([^;]+)"));
+      return m ? decodeURIComponent(m[2]) : "";
+    }
+    function clearCookie(name) {
+      document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
+    }
+
+    async function sha256Hex(text) {
+      const enc = new TextEncoder().encode(text);
+      const hashBuf = await crypto.subtle.digest("SHA-256", enc);
+      const hashArr = Array.from(new Uint8Array(hashBuf));
+      return hashArr.map(b => b.toString(16).padStart(2, "0")).join("");
+    }
+
+    async function doCheckout(visitId, method, cccdHashToClear = null) {
+      try {
+        show("muted", "Đang check-out...");
+
+        await updateDoc(doc(db, "visits", visitId), {
+          status: "checked_out",
+          checkoutAt: serverTimestamp(),
+          checkoutMethod: method
+        });
+
+        // Clear mapping nếu có cccdHash
+        if (cccdHashToClear) {
+          await setDoc(doc(db, "activeByCccd", cccdHashToClear), {
+            visitId: "",
+            updatedAt: serverTimestamp()
+          }, { merge: true });
+        }
+
+        // Clear local dấu vết
+        localStorage.removeItem("visitId");
+        localStorage.removeItem("cccdHash");
+        clearCookie("visitId");
+        clearCookie("cccdHash");
+
+        show("ok", "<b>✅ Check-out thành công!</b><br>Trực ban/Chỉ huy sẽ thấy bạn đã về trên màn hình.");
+      } catch (e) {
+        show("err", `<b>❌ Không check-out được:</b> ${e.message}`);
+        document.getElementById("fallbackBox").style.display = "block";
+      }
+    }
+
+    // 1) Thử auto checkout bằng cookie/localStorage
+    async function tryAuto() {
+      const visitId = localStorage.getItem("visitId") || getCookie("visitId");
+      const cccdHash = localStorage.getItem("cccdHash") || getCookie("cccdHash");
+
+      if (visitId) {
+        await doCheckout(visitId, "qr_cookie", cccdHash || null);
+      } else {
+        document.getElementById("fallbackBox").style.display = "block";
+        show("muted", "Không tìm thấy cookie. Vui lòng nhập CCCD để check-out.");
+      }
+    }
+
+    // 2) Fallback: nhập CCCD -> lấy mapping -> checkout
+    document.getElementById("btnByCccd").addEventListener("click", async () => {
+      const cccdRaw = document.getElementById("cccd").value.trim().replace(/\s+/g, "");
+      if (!/^\d{12}$/.test(cccdRaw)) {
+        show("err", "CCCD phải đúng 12 chữ số.");
+        return;
+      }
+
+      const cccdHash = await sha256Hex(cccdRaw);
+
+      const mapRef = doc(db, "activeByCccd", cccdHash);
+      const mapSnap = await getDoc(mapRef);
+
+      if (!mapSnap.exists()) {
+        show("err", "Không tìm thấy phiên thăm thân đang hoạt động theo CCCD này.");
+        return;
+      }
+
+      const { visitId } = mapSnap.data();
+      if (!visitId) {
+        show("err", "Không có phiên đang hoạt động (có thể đã check-out trước đó).");
+        return;
+      }
+
+      await doCheckout(visitId, "cccd", cccdHash);
+    });
+
+    tryAuto();
+  </script>
+</body>
+</html>
 
