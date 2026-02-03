@@ -1,1 +1,170 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Đăng ký thăm thân</title>
+  <style>
+    body { font-family: system-ui, Arial; margin: 0; background:#f6f7f9; }
+    .wrap { max-width: 720px; margin: 0 auto; padding: 16px; }
+    .card { background: white; border-radius: 12px; padding: 16px; box-shadow: 0 1px 8px rgba(0,0,0,.06); }
+    h1 { margin: 0 0 8px; font-size: 20px; }
+    p { margin: 6px 0; color:#333; }
+    label { display:block; margin-top: 10px; font-weight: 600; }
+    input, select, button { width: 100%; padding: 12px; margin-top: 6px; border-radius: 10px; border: 1px solid #d7dbe0; font-size: 16px; box-sizing: border-box; }
+    button { border: 0; background: #1b74e4; color: white; font-weight: 700; cursor: pointer; }
+    button:disabled { opacity: .6; cursor: not-allowed; }
+    .muted { color:#666; font-size: 13px; }
+    .ok { background:#e8fff0; border:1px solid #b8f0cc; padding:10px; border-radius:10px; }
+    .err { background:#ffecec; border:1px solid #ffbdbd; padding:10px; border-radius:10px; }
+    .row { display: grid; grid-template-columns: 1fr; gap: 8px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>Đăng ký thăm thân – TÊN ĐƠN VỊ</h1>
+      <p class="muted">Vui lòng nhập thông tin. Sau khi gửi, Trực ban/Chỉ huy sẽ thấy ngay trên màn hình và duyệt.</p>
+
+      <div id="msg"></div>
+
+      <form id="form">
+        <label>Họ và tên người thăm</label>
+        <input id="fullName" required placeholder="Ví dụ: Nguyễn Văn A" />
+
+        <label>Số điện thoại</label>
+        <input id="phone" required inputmode="tel" placeholder="Ví dụ: 09xxxxxxxx" />
+
+        <label>Quan hệ</label>
+        <select id="relationship" required>
+          <option value="">-- Chọn --</option>
+          <option>Bố/Mẹ</option>
+          <option>Vợ/Chồng</option>
+          <option>Anh/Chị/Em</option>
+          <option>Họ hàng</option>
+          <option>Khác</option>
+        </select>
+
+        <label>Quân nhân cần thăm (họ tên)</label>
+        <input id="soldierName" required placeholder="Ví dụ: Trần Văn B" />
+
+        <label>Căn cước công dân (12 số)</label>
+        <input id="cccd" required inputmode="numeric" placeholder="Nhập 12 số CCCD" />
+
+        <p class="muted">
+          Hệ thống <b>không lưu CCCD dạng thô</b>. Chỉ lưu mã băm (hash) + 4 số cuối để giảm lộ lọt thông tin.
+        </p>
+
+        <button id="submitBtn" type="submit">GỬI ĐĂNG KÝ</button>
+      </form>
+
+      <hr style="margin:16px 0; border:none; border-top:1px solid #eee;">
+      <p class="muted">
+        Nếu bạn đã thăm xong, vui lòng quét QR tại cổng ra để Check-out.
+      </p>
+    </div>
+  </div>
+
+  <script type="module">
+    // ====== 1) IMPORT FIREBASE SDK (CDN) ======
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-app.js";
+    import {
+      getFirestore, collection, addDoc, doc, setDoc,
+      serverTimestamp
+    } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore.js";
+
+    // ====== 2) DÁN firebaseConfig CỦA BẠN Ở ĐÂY ======
+    // Firebase Console -> Project settings -> Your apps -> Web app -> Firebase SDK snippet -> firebaseConfig
+    const firebaseConfig = {
+      apiKey: "PASTE_HERE",
+      authDomain: "PASTE_HERE",
+      projectId: "PASTE_HERE",
+      storageBucket: "PASTE_HERE",
+      messagingSenderId: "PASTE_HERE",
+      appId: "PASTE_HERE"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    // ====== 3) TIỆN ÍCH: HASH CCCD (SHA-256 -> HEX) ======
+    async function sha256Hex(text) {
+      const enc = new TextEncoder().encode(text);
+      const hashBuf = await crypto.subtle.digest("SHA-256", enc);
+      const hashArr = Array.from(new Uint8Array(hashBuf));
+      return hashArr.map(b => b.toString(16).padStart(2, "0")).join("");
+    }
+
+    // ====== 4) COOKIE + LOCALSTORAGE (để nhớ visitId, phục vụ checkout) ======
+    function setCookie(name, value, days) {
+      const d = new Date();
+      d.setTime(d.getTime() + days * 24 * 60 * 60 * 1000);
+      document.cookie = `${name}=${encodeURIComponent(value)}; expires=${d.toUTCString()}; path=/; SameSite=Lax`;
+    }
+    function showMsg(type, html) {
+      const el = document.getElementById("msg");
+      el.innerHTML = `<div class="${type}">${html}</div>`;
+    }
+
+    // ====== 5) SUBMIT FORM ======
+    const form = document.getElementById("form");
+    const submitBtn = document.getElementById("submitBtn");
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      submitBtn.disabled = true;
+      showMsg("muted", "Đang gửi đăng ký...");
+
+      try {
+        const fullName = document.getElementById("fullName").value.trim();
+        const phone = document.getElementById("phone").value.trim();
+        const relationship = document.getElementById("relationship").value.trim();
+        const soldierName = document.getElementById("soldierName").value.trim();
+        const cccdRaw = document.getElementById("cccd").value.trim().replace(/\s+/g, "");
+
+        if (!/^\d{12}$/.test(cccdRaw)) {
+          throw new Error("CCCD phải đúng 12 chữ số.");
+        }
+
+        const cccdLast4 = cccdRaw.slice(-4);
+        const cccdHash = await sha256Hex(cccdRaw);
+
+        // Tạo visit mới
+        const visitRef = await addDoc(collection(db, "visits"), {
+          fullName, phone, relationship, soldierName,
+          cccdLast4, cccdHash,
+          status: "pending",
+          createdAt: serverTimestamp(),
+          approvedAt: null,
+          approvedBy: null,
+          checkoutAt: null,
+          checkoutMethod: null
+        });
+
+        // Tạo mapping để checkout khi mất cookie (CCCD hash -> visitId)
+        await setDoc(doc(db, "activeByCccd", cccdHash), {
+          visitId: visitRef.id,
+          updatedAt: serverTimestamp()
+        }, { merge: true });
+
+        // Lưu "dấu vết" trên máy khách (cookie + localStorage)
+        localStorage.setItem("visitId", visitRef.id);
+        localStorage.setItem("cccdHash", cccdHash);
+        setCookie("visitId", visitRef.id, 3);
+        setCookie("cccdHash", cccdHash, 3);
+
+        showMsg("ok", `
+          <b>Đăng ký thành công!</b><br>
+          Vui lòng chờ Trực ban duyệt và mời vào đơn vị.
+        `);
+        form.reset();
+      } catch (err) {
+        showMsg("err", `<b>Lỗi:</b> ${err.message || err}`);
+      } finally {
+        submitBtn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
 
