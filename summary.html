@@ -1,0 +1,375 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Tổng hợp ngày – Thăm thân</title>
+  <style>
+    body { font-family: system-ui, Arial; margin:0; background:#0b1220; color:#eaf0ff; }
+    .wrap { max-width: 1200px; margin: 0 auto; padding: 16px; }
+    .card { background:#111b31; border:1px solid rgba(255,255,255,.08); border-radius: 14px; padding: 16px; }
+    h1 { margin:0 0 8px; font-size: 18px; }
+    .muted { color: rgba(234,240,255,.75); font-size: 13px; }
+    input, button, select {
+      padding: 10px; border-radius: 10px; border: 1px solid rgba(255,255,255,.12);
+      background:#0b1220; color:#eaf0ff;
+    }
+    button { cursor:pointer; font-weight:700; }
+    button.primary { background:#1b74e4; border:0; }
+    button.gray { background:#33415f; border:0; }
+    .grid { display:grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 10px; }
+    @media (max-width: 900px) { .grid { grid-template-columns: 1fr 1fr; } }
+    .kpi { background:#0b1220; border:1px solid rgba(255,255,255,.10); border-radius: 14px; padding: 12px; }
+    .kpi b { font-size: 20px; display:block; margin-top: 4px; }
+    .topbar { display:flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th, td { border-bottom:1px solid rgba(255,255,255,.08); padding: 10px; vertical-align: top; font-size: 14px; }
+    th { text-align:left; color: rgba(234,240,255,.85); }
+    .pill { display:inline-block; padding: 4px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; }
+    .pending { background:#ffd86b; color:#2a1b00; }
+    .approved { background:#68ffb3; color:#003018; }
+    .rejected { background:#ff8f8f; color:#3b0000; }
+    .out { background:#9bb1ff; color:#0b1220; }
+    .toast { margin-top: 10px; padding: 10px; border-radius: 10px; border:1px solid rgba(255,255,255,.12); background:#0b1220; }
+    a { color:#9bb1ff; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <div class="topbar">
+        <div>
+          <h1>Tổng hợp ngày – Thăm thân (TÊN ĐƠN VỊ)</h1>
+          <div class="muted">Chỉ huy đăng nhập để tổng hợp ra/vào theo ngày. Có thể xuất CSV để lưu hồ sơ.</div>
+        </div>
+        <div id="userBox" class="muted"></div>
+      </div>
+
+      <div id="loginBox" style="margin-top:12px;">
+        <div class="grid" style="grid-template-columns: 1fr 1fr;">
+          <div>
+            <div class="muted">Email</div>
+            <input id="email" placeholder="email chỉ huy" />
+          </div>
+          <div>
+            <div class="muted">Mật khẩu</div>
+            <input id="password" type="password" placeholder="********" />
+          </div>
+        </div>
+        <div style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap;">
+          <button class="primary" id="loginBtn">ĐĂNG NHẬP</button>
+          <button class="gray" id="logoutBtn" style="display:none;">ĐĂNG XUẤT</button>
+        </div>
+        <div id="loginMsg" class="toast" style="display:none;"></div>
+      </div>
+
+      <div id="appBox" style="display:none; margin-top:12px;">
+        <div class="topbar">
+          <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+            <div class="muted">Chọn ngày</div>
+            <input id="day" type="date" />
+            <button class="primary" id="refreshBtn">TẢI DỮ LIỆU</button>
+            <button class="gray" id="exportBtn">XUẤT CSV</button>
+          </div>
+          <div class="muted">Gợi ý: chọn ngày rồi bấm “Tải dữ liệu”.</div>
+        </div>
+
+        <div id="toast" class="toast" style="display:none;"></div>
+
+        <div class="grid" style="margin-top:10px;">
+          <div class="kpi"><span class="muted">Tổng lượt</span><b id="kTotal">0</b></div>
+          <div class="kpi"><span class="muted">Chờ duyệt</span><b id="kPending">0</b></div>
+          <div class="kpi"><span class="muted">Đã duyệt</span><b id="kApproved">0</b></div>
+          <div class="kpi"><span class="muted">Đã về</span><b id="kOut">0</b></div>
+        </div>
+        <div class="grid" style="margin-top:10px;">
+          <div class="kpi"><span class="muted">Từ chối</span><b id="kRejected">0</b></div>
+          <div class="kpi"><span class="muted">Tỉ lệ đã về</span><b id="kRate">0%</b></div>
+          <div class="kpi"><span class="muted">Giờ sớm nhất</span><b id="kFirst">-</b></div>
+          <div class="kpi"><span class="muted">Giờ muộn nhất</span><b id="kLast">-</b></div>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Thời gian đăng ký</th>
+              <th>Người thăm</th>
+              <th>Quân nhân</th>
+              <th>Quan hệ</th>
+              <th>CCCD</th>
+              <th>Trạng thái</th>
+              <th>Giờ duyệt</th>
+              <th>Giờ về</th>
+            </tr>
+          </thead>
+          <tbody id="tbody"></tbody>
+        </table>
+
+        <div class="muted" style="margin-top:10px;">
+          Link nhanh: <a href="./admin.html">Trang Trực ban</a> • <a href="./">Trang đăng ký</a> • <a href="./checkout.html">Trang Check-out</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-app.js";
+    import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut }
+      from "https://www.gstatic.com/firebasejs/12.8.0/firebase-auth.js";
+    import {
+      getFirestore, doc, getDoc,
+      collection, query, where, orderBy, getDocs
+    } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore.js";
+
+    // ====== firebaseConfig (CỦA BẠN) ======
+    const firebaseConfig = {
+      apiKey: "AIzaSyAvKod7RAyvKE8w-w-NTUJlempsuxyRAsI",
+      authDomain: "thamthan584.firebaseapp.com",
+      projectId: "thamthan584",
+      storageBucket: "thamthan584.firebasestorage.app",
+      messagingSenderId: "1072621285684",
+      appId: "1:1072621285684:web:b5b64b288aecbbb85cb561"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    // UI
+    const loginBox = document.getElementById("loginBox");
+    const appBox = document.getElementById("appBox");
+    const loginBtn = document.getElementById("loginBtn");
+    const logoutBtn = document.getElementById("logoutBtn");
+    const loginMsg = document.getElementById("loginMsg");
+    const userBox = document.getElementById("userBox");
+    const toast = document.getElementById("toast");
+    const dayInput = document.getElementById("day");
+    const refreshBtn = document.getElementById("refreshBtn");
+    const exportBtn = document.getElementById("exportBtn");
+    const tbody = document.getElementById("tbody");
+
+    const kTotal = document.getElementById("kTotal");
+    const kPending = document.getElementById("kPending");
+    const kApproved = document.getElementById("kApproved");
+    const kOut = document.getElementById("kOut");
+    const kRejected = document.getElementById("kRejected");
+    const kRate = document.getElementById("kRate");
+    const kFirst = document.getElementById("kFirst");
+    const kLast = document.getElementById("kLast");
+
+    function showLoginMsg(html) {
+      loginMsg.style.display = "block";
+      loginMsg.innerHTML = html;
+    }
+    function showToast(html) {
+      toast.style.display = "block";
+      toast.innerHTML = html;
+      setTimeout(() => toast.style.display = "none", 6000);
+    }
+
+    function formatTime(ts) {
+      if (!ts) return "-";
+      const d = ts.toDate ? ts.toDate() : ts;
+      return d.toLocaleString("vi-VN");
+    }
+    function formatHM(ts) {
+      if (!ts) return "-";
+      const d = ts.toDate ? ts.toDate() : ts;
+      return d.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
+    }
+    function statusPill(s) {
+      if (s === "pending") return `<span class="pill pending">CHỜ DUYỆT</span>`;
+      if (s === "approved") return `<span class="pill approved">ĐÃ DUYỆT</span>`;
+      if (s === "rejected") return `<span class="pill rejected">TỪ CHỐI</span>`;
+      if (s === "checked_out") return `<span class="pill out">ĐÃ VỀ</span>`;
+      return s || "-";
+    }
+
+    function setDefaultDateToday() {
+      const now = new Date();
+      const yyyy = now.getFullYear();
+      const mm = String(now.getMonth() + 1).padStart(2, "0");
+      const dd = String(now.getDate()).padStart(2, "0");
+      dayInput.value = `${yyyy}-${mm}-${dd}`;
+    }
+
+    function toStartEndOfDay(dateStr) {
+      // dateStr: YYYY-MM-DD (local time)
+      const [y, m, d] = dateStr.split("-").map(Number);
+      const start = new Date(y, m - 1, d, 0, 0, 0, 0);
+      const end = new Date(y, m - 1, d + 1, 0, 0, 0, 0);
+      return { start, end };
+    }
+
+    let lastRows = [];
+
+    function render(rows) {
+      lastRows = rows;
+
+      let pending = 0, approved = 0, out = 0, rejected = 0;
+      let first = null, last = null;
+
+      for (const r of rows) {
+        const t = r.createdAt?.toDate ? r.createdAt.toDate() : null;
+        if (t) {
+          if (!first || t < first) first = t;
+          if (!last || t > last) last = t;
+        }
+
+        if (r.status === "pending") pending++;
+        else if (r.status === "approved") approved++;
+        else if (r.status === "checked_out") out++;
+        else if (r.status === "rejected") rejected++;
+      }
+
+      kTotal.textContent = rows.length;
+      kPending.textContent = pending;
+      kApproved.textContent = approved;
+      kOut.textContent = out;
+      kRejected.textContent = rejected;
+
+      const rate = rows.length ? Math.round((out / rows.length) * 100) : 0;
+      kRate.textContent = `${rate}%`;
+
+      kFirst.textContent = first ? first.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }) : "-";
+      kLast.textContent = last ? last.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }) : "-";
+
+      tbody.innerHTML = rows.map(r => {
+        const cccdMasked = `****${r.cccdLast4 || ""}`;
+        return `
+          <tr>
+            <td>${formatTime(r.createdAt)}</td>
+            <td><b>${r.fullName || "-"}</b><br><span class="muted">${r.phone || "-"}</span></td>
+            <td>${r.soldierName || "-"}</td>
+            <td>${r.relationship || "-"}</td>
+            <td>${cccdMasked}</td>
+            <td>${statusPill(r.status)}</td>
+            <td>${formatHM(r.approvedAt)}</td>
+            <td>${formatHM(r.checkoutAt)}</td>
+          </tr>
+        `;
+      }).join("");
+    }
+
+    async function requireCommander(uid) {
+      const snap = await getDoc(doc(db, "users", uid));
+      if (!snap.exists()) return false;
+      const d = snap.data();
+      return d?.active === true && d?.role === "commander";
+    }
+
+    async function loadDay(dateStr) {
+      const { start, end } = toStartEndOfDay(dateStr);
+
+      // Lọc createdAt theo khoảng thời gian của ngày
+      const q = query(
+        collection(db, "visits"),
+        where("createdAt", ">=", start),
+        where("createdAt", "<", end),
+        orderBy("createdAt", "asc")
+      );
+
+      const snap = await getDocs(q);
+      const rows = [];
+      snap.forEach(ds => rows.push({ id: ds.id, ...ds.data() }));
+      render(rows);
+      showToast(`✅ Đã tải ${rows.length} lượt ngày ${dateStr}.`);
+    }
+
+    function exportCSV() {
+      const header = [
+        "createdAt","fullName","phone","relationship","soldierName","cccdLast4",
+        "status","approvedAt","checkoutAt","checkoutMethod"
+      ];
+
+      const escape = (v) => {
+        const s = (v ?? "").toString().replaceAll('"','""');
+        return `"${s}"`;
+      };
+
+      const lines = [header.join(",")];
+      for (const r of lastRows) {
+        const row = [
+          r.createdAt?.toDate ? r.createdAt.toDate().toISOString() : "",
+          r.fullName || "",
+          r.phone || "",
+          r.relationship || "",
+          r.soldierName || "",
+          r.cccdLast4 || "",
+          r.status || "",
+          r.approvedAt?.toDate ? r.approvedAt.toDate().toISOString() : "",
+          r.checkoutAt?.toDate ? r.checkoutAt.toDate().toISOString() : "",
+          r.checkoutMethod || ""
+        ].map(escape);
+        lines.push(row.join(","));
+      }
+
+      const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `tong-hop-tham-than_${dayInput.value}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    }
+
+    // Login handlers
+    loginBtn.addEventListener("click", async () => {
+      loginMsg.style.display = "none";
+      const email = document.getElementById("email").value.trim();
+      const password = document.getElementById("password").value;
+      try {
+        await signInWithEmailAndPassword(auth, email, password);
+      } catch (e) {
+        showLoginMsg(`<b>Đăng nhập lỗi:</b> ${e.message}`);
+      }
+    });
+    logoutBtn.addEventListener("click", async () => { await signOut(auth); });
+
+    refreshBtn.addEventListener("click", async () => {
+      try { await loadDay(dayInput.value); }
+      catch (e) { showToast(`❌ Không tải được: ${e.message}`); }
+    });
+
+    exportBtn.addEventListener("click", () => {
+      if (!lastRows.length) {
+        showToast("Chưa có dữ liệu để xuất CSV.");
+        return;
+      }
+      exportCSV();
+    });
+
+    // Auth state
+    onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        userBox.textContent = "";
+        appBox.style.display = "none";
+        logoutBtn.style.display = "none";
+        loginBtn.style.display = "inline-block";
+        return;
+      }
+
+      userBox.innerHTML = `Đăng nhập: <b>${user.email}</b>`;
+      logoutBtn.style.display = "inline-block";
+      loginBtn.style.display = "none";
+
+      // Chỉ cho chỉ huy xem
+      const ok = await requireCommander(user.uid);
+      if (!ok) {
+        appBox.style.display = "none";
+        showLoginMsg("❌ Tài khoản này không có quyền CHỈ HUY. Vui lòng dùng tài khoản chỉ huy.");
+        return;
+      }
+
+      loginBox.style.display = "none";
+      appBox.style.display = "block";
+      setDefaultDateToday();
+
+      try { await loadDay(dayInput.value); }
+      catch (e) { showToast(`❌ Không tải được dữ liệu: ${e.message}`); }
+    });
+  </script>
+</body>
+</html>
